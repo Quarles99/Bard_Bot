@@ -19,12 +19,14 @@ Required env vars (see `.env.example`):
 - `DISCORD_TOKEN` — bot token
 - `LAVALINK_PASSWORD` — must match `lavalink/application.yml` (overridden there via `LAVALINK_SERVER_PASSWORD`)
 - `GUILD_IDS` — optional, comma-separated guild IDs for instant slash-command sync during dev (global sync can take up to an hour to propagate)
+- `DB_PATH` — optional, path to the SQLite play-history database (defaults to `data/history.db`; in Docker this is `/app/data/history.db`, backed by the `./data` bind mount in `docker-compose.yml`)
 
 No test suite, linter, or build step is currently configured in this repo.
 
 ## Architecture
 
-- `bot/bot.py` — entrypoint. Builds the `MusicBot` (`commands.Bot` subclass), connects to the Lavalink node via `wavelink.Pool.connect` in `setup_hook`, loads `cogs.music`, then syncs the slash-command tree (globally, plus instantly to any `GUILD_IDS` for dev).
-- `bot/cogs/music.py` — all slash commands (`/play`, `/skip`, `/pause`, `/resume`, `/stop`, `/leave`, `/queue`, `/nowplaying`, `/volume`) live in the single `Music` cog. Playback state is held entirely on `wavelink.Player` (attached as the guild's voice client) and its `.queue` — there is no bot-side persistence or database. Auto-advance to the next queued track happens in the `on_wavelink_track_end` listener.
+- `bot/bot.py` — entrypoint. Builds the `MusicBot` (`commands.Bot` subclass), connects to the Lavalink node via `wavelink.Pool.connect` in `setup_hook`, opens the `HistoryStore` (`self.history`), loads `cogs.music`, then syncs the slash-command tree (globally, plus instantly to any `GUILD_IDS` for dev).
+- `bot/cogs/music.py` — all slash commands (`/play`, `/skip`, `/pause`, `/resume`, `/stop`, `/leave`, `/queue`, `/nowplaying`, `/volume`, `/history list|shuffle|remove`) live in the single `Music` cog. Playback state (current track, queue) is held entirely on `wavelink.Player` (attached as the guild's voice client) and its `.queue`, and is not persisted. Auto-advance to the next queued track happens in the `on_wavelink_track_end` listener.
+- `bot/history_store.py` — `HistoryStore`, an `aiosqlite`-backed store of per-guild play history (one deduped row per unique song per guild, keyed on `(guild_id, source, identifier)`). `/play` records a song the first time it's individually queued (not for bulk playlist adds); `/history shuffle` reads a random sample and re-resolves each track's URI through `wavelink.Playable.search` before queueing; `/history remove` deletes a row by id (selected via Discord autocomplete over titles).
 - `lavalink/application.yml` — Lavalink server config. YouTube is deliberately disabled as a built-in source (`sources.youtube: false`) in favor of the `youtube-plugin` jar in `lavalink/plugins/`, which is the currently-supported way to play YouTube audio through Lavalink.
 - Adding a new command means adding a method to the `Music` cog in `music.py`; there's no other registration step needed since `bot.py` syncs the whole tree on startup.

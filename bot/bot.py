@@ -7,6 +7,8 @@ import wavelink
 from discord.ext import commands
 from dotenv import load_dotenv
 
+from history_store import HistoryStore
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
@@ -16,6 +18,7 @@ DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
 LAVALINK_HOST = os.environ.get("LAVALINK_HOST", "lavalink")
 LAVALINK_PORT = os.environ.get("LAVALINK_PORT", "2333")
 LAVALINK_PASSWORD = os.environ["LAVALINK_PASSWORD"]
+DB_PATH = os.environ.get("DB_PATH", "data/history.db")
 
 intents = discord.Intents.default()
 intents.voice_states = True
@@ -31,6 +34,9 @@ class MusicBot(commands.Bot):
             password=LAVALINK_PASSWORD,
         )
         await wavelink.Pool.connect(nodes=[node], client=self, cache_capacity=100)
+
+        self.history = HistoryStore(DB_PATH)
+        await self.history.init()
 
         await self.load_extension("cogs.music")
 

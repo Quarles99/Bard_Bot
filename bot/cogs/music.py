@@ -1,3 +1,5 @@
+import asyncio
+
 import discord
 import wavelink
 from discord import app_commands
@@ -15,23 +17,31 @@ def format_duration(ms: int) -> str:
 
 @app_commands.guild_only()
 class Music(commands.Cog):
+    history_group = app_commands.Group(name="history", description="This server's play history")
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="play", description="Play a song or add it to the queue")
-    @app_commands.describe(query="A search term, YouTube/SoundCloud URL, or playlist URL")
-    async def play(self, interaction: discord.Interaction, query: str):
-        await interaction.response.defer()
-
+    async def _ensure_player(self, interaction: discord.Interaction) -> wavelink.Player | None:
         if interaction.user.voice is None or interaction.user.voice.channel is None:
             await interaction.followup.send("Join a voice channel first.")
-            return
+            return None
 
         player: wavelink.Player | None = interaction.guild.voice_client  # type: ignore[assignment]
         if player is None:
             player = await interaction.user.voice.channel.connect(cls=wavelink.Player)
             player.autoplay = wavelink.AutoPlayMode.disabled
             player.text_channel = interaction.channel
+        return player
+
+    @app_commands.command(name="play", description="Play a song or add it to the queue")
+    @app_commands.describe(query="A search term, YouTube/SoundCloud URL, or playlist URL")
+    async def play(self, interaction: discord.Interaction, query: str):
+        await interaction.response.defer()
+
+        player = await self._ensure_player(interaction)
+        if player is None:
+            return
 
         results: wavelink.Search = await wavelink.Playable.search(query)
         if not results:
@@ -46,6 +56,7 @@ class Music(commands.Cog):
         else:
             track = results[0]
             await player.queue.put_wait(track)
+            await self.bot.history.record_play(interaction.guild.id, track)
             await interaction.followup.send(f"Queued **{track.title}**.")
 
         if not player.playing:
@@ -137,6 +148,103 @@ class Music(commands.Cog):
             return
         await player.set_volume(level)
         await interaction.response.send_message(f"Volume set to {level}%.")
+
+    @history_group.command(name="list", description="Show songs tracked from this server's play history")
+    async def history_list(self, interaction: discord.Interaction):
+        records = await self.bot.history.list_tracks(interaction.guild.id, limit=200)
+        if not records:
+            await interaction.response.send_message(
+                "No play history yet for this server.", ephemeral=True
+            )
+            return
+
+        lines = []
+        for i, record in enumerate(records, start=1):
+            lines.append(
+                f"{i}. {record.title} ({format_duration(record.length_ms)}) "
+                f"— requested {record.request_count}x"
+            )
+            if i >= 10:
+                remaining = len(records) - 10
+                if remaining > 0:
+                    lines.append(f"...and {remaining} more.")
+                break
+
+        await interaction.response.send_message("\n".join(lines))
+
+    @history_group.command(name="shuffle", description="Queue a random shuffle from this server's play history")
+    @app_commands.describe(count="How many songs to shuffle in (1-25)")
+    async def history_shuffle(
+        self, interaction: discord.Interaction, count: app_commands.Range[int, 1, 25] = 10
+    ):
+        await interaction.response.defer()
+
+        player = await self._ensure_player(interaction)
+        if player is None:
+            return
+
+        records = await self.bot.history.sample_tracks(interaction.guild.id, count)
+        if not records:
+            await interaction.followup.send("No play history yet for this server.")
+            return
+
+        results = await asyncio.gather(
+            *(wavelink.Playable.search(record.uri) for record in records),
+            return_exceptions=True,
+        )
+
+        queued = 0
+        for result in results:
+            if isinstance(result, BaseException) or not result:
+                continue
+            track = result.tracks[0] if isinstance(result, wavelink.Playlist) else result[0]
+            await player.queue.put_wait(track)
+            queued += 1
+
+        if queued == 0:
+            await interaction.followup.send(
+                "Couldn't resolve any tracks from history (they may no longer be available)."
+            )
+            return
+
+        if not player.playing:
+            await player.play(player.queue.get())
+
+        skipped = len(records) - queued
+        message = f"Shuffled in {queued} song(s) from this server's history."
+        if skipped:
+            message += f" ({skipped} couldn't be resolved.)"
+        await interaction.followup.send(message)
+
+    @history_group.command(name="remove", description="Remove a song from this server's play history")
+    @app_commands.describe(song="The song to remove (pick from the suggestions)")
+    async def history_remove(self, interaction: discord.Interaction, song: str):
+        try:
+            record_id = int(song)
+        except ValueError:
+            record_id = -1
+
+        removed = await self.bot.history.remove_track(interaction.guild.id, record_id)
+        if removed is None:
+            await interaction.response.send_message(
+                "Couldn't find that song in the history — pick one of the autocomplete suggestions.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            f"Removed **{removed.title}** from this server's play history."
+        )
+
+    @history_remove.autocomplete("song")
+    async def history_remove_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        records = await self.bot.history.search_titles(interaction.guild.id, current)
+        return [
+            app_commands.Choice(name=record.title[:100], value=str(record.id))
+            for record in records
+        ]
 
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):

@@ -27,6 +27,9 @@ services:
     environment:
       - LAVALINK_HOST=lavalink
       - LAVALINK_PORT=2333
+      - DB_PATH=/app/data/history.db
+    volumes:
+      - ./data:/app/data:Z
     networks:
       - musicbot
 
