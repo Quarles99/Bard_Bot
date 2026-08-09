@@ -40,6 +40,13 @@ plugins:
       enabled: true
       # refreshToken is supplied via the YOUTUBE_OAUTH_REFRESH_TOKEN env var
       # (see docker-compose.yml) so it never ends up committed to git.
+    remoteCipher:
+      # Offloads YouTube's signature-cipher solving to avoid needing to chase
+      # every YouTube player-script change ourselves. Free public instance,
+      # rate-limited to 10 req/sec - plenty for light usage. Self-host
+      # https://github.com/kikkia/yt-cipher later if that's ever a bottleneck.
+      url: "https://cipher.kikkia.dev/"
+      userAgent: "bard-bot"
 
 metrics:
   prometheus:
