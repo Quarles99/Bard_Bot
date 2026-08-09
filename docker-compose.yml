@@ -1,0 +1,33 @@
+services:
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
+    container_name: lavalink
+    restart: unless-stopped
+    environment:
+      - _JAVA_OPTIONS=-Xmx1G
+      - SERVER_PORT=2333
+      - LAVALINK_SERVER_PASSWORD=${LAVALINK_PASSWORD}
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro,Z
+      - ./lavalink/plugins:/opt/Lavalink/plugins:Z
+    expose:
+      - "2333"
+    networks:
+      - musicbot
+
+  bot:
+    build: ./bot
+    container_name: musicbot
+    restart: unless-stopped
+    depends_on:
+      - lavalink
+    env_file:
+      - .env
+    environment:
+      - LAVALINK_HOST=lavalink
+      - LAVALINK_PORT=2333
+    networks:
+      - musicbot
+
+networks:
+  musicbot:
