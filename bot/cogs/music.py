@@ -31,6 +31,7 @@ class Music(commands.Cog):
         if player is None:
             player = await interaction.user.voice.channel.connect(cls=wavelink.Player)
             player.autoplay = wavelink.AutoPlayMode.disabled
+            player.text_channel = interaction.channel
 
         results: wavelink.Search = await wavelink.Playable.search(query)
         if not results:
@@ -145,6 +146,16 @@ class Music(commands.Cog):
         if not player.queue.is_empty and not player.playing:
             next_track = player.queue.get()
             await player.play(next_track)
+
+    @commands.Cog.listener()
+    async def on_wavelink_inactive_player(self, player: wavelink.Player):
+        # Fires when nothing has played for 5 minutes, or the bot has been
+        # alone in the channel for a few tracks (wavelink's built-in
+        # defaults - see Player.inactive_timeout / inactive_channel_tokens).
+        channel = getattr(player, "text_channel", None)
+        if channel is not None:
+            await channel.send("Leaving the voice channel due to inactivity.")
+        await player.disconnect()
 
 
 async def setup(bot: commands.Bot):
