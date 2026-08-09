@@ -11,7 +11,9 @@ with Docker installed.
 3. **Add Server**:
    - **Location**: pick one close to most of your Discord servers' members.
    - **Image**: Ubuntu 24.04.
-   - **Type**: Shared vCPU → **CPX11** (2 vCPU / 2GB RAM) to start.
+   - **Type**: Shared Resources → Cost-Optimized → **CX23** (2 vCPU / 4GB RAM)
+     to start. If it shows as unavailable in your region, fall back to
+     Regular Performance at a similar price point.
    - **SSH key**: add your public key here (avoids password auth entirely).
    - Leave the rest at defaults, create the server.
 4. Note the server's public IPv4 address.
@@ -52,10 +54,23 @@ ufw enable
 
 ## 3. Deploy the bot
 
-Clone the repo:
+This repo is **private**. Set up a deploy key so the server can clone/pull it
+without using your personal GitHub credentials:
 
 ```bash
-git clone https://github.com/Quarles99/Bard_Bot.git
+ssh-keygen -t ed25519 -C "bard-bot-deploy" -N "" -f ~/.ssh/id_ed25519
+cat ~/.ssh/id_ed25519.pub
+```
+
+Copy that output, then on GitHub go to the repo's
+**Settings → Deploy keys → Add deploy key**, paste it in, and leave
+**"Allow write access" unchecked** (the server only needs to pull).
+
+Clone via SSH (first connection will ask you to confirm GitHub's host key —
+type `yes`):
+
+```bash
+git clone git@github.com:Quarles99/Bard_Bot.git
 cd Bard_Bot
 ```
 
@@ -115,7 +130,7 @@ cleanup needed.
 ## 6. Scaling up later
 
 - **More load on the same box**: resize the Hetzner server in the console
-  (Server → Rescale) to a bigger type (e.g. CPX21 → CPX31). Takes a few
+  (Server → Rescale) to a bigger type (e.g. CX23 → CX33). Takes a few
   minutes of downtime, same disk/IP/setup — no redeploy needed.
 - **Beyond one box**: `bot/bot.py` connects via
   `wavelink.Pool.connect(nodes=[...])`, so adding a second Lavalink node
