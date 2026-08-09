@@ -35,6 +35,7 @@ plugins:
       - ANDROID_VR
       - WEB
       - WEBEMBEDDED
+      - TV # only client that actually uses the OAuth token for playback
     oauth:
       enabled: true
       # refreshToken is supplied via the YOUTUBE_OAUTH_REFRESH_TOKEN env var
