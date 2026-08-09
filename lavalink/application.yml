@@ -33,7 +33,8 @@ plugins:
     clients:
       - MUSIC
       - ANDROID_VR
-      - IOS
+      - WEB
+      - WEBEMBEDDED
 
 metrics:
   prometheus:
