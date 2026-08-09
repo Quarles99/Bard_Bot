@@ -37,9 +37,8 @@ plugins:
       - WEBEMBEDDED
     oauth:
       enabled: true
-      # After completing the device-login flow once, paste the printed
-      # refresh token here so it doesn't need to be redone on restart:
-      # refreshToken: "paste refresh token here"
+      # refreshToken is supplied via the YOUTUBE_OAUTH_REFRESH_TOKEN env var
+      # (see docker-compose.yml) so it never ends up committed to git.
 
 metrics:
   prometheus:

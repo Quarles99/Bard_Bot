@@ -90,6 +90,24 @@ LAVALINK_PASSWORD=some-long-random-password
 containers — `docker-compose.yml` already passes it to both, so you don't need
 to touch `lavalink/application.yml`.
 
+**YouTube playback**: from a datacenter IP (like this server's), YouTube's
+bot detection tends to block anonymous requests with "This video requires
+login" regardless of which client the `youtube-plugin` uses. The fix is
+OAuth, already enabled in `lavalink/application.yml`
+(`plugins.youtube.oauth.enabled: true`):
+
+1. Leave `YOUTUBE_OAUTH_REFRESH_TOKEN` unset in `.env` and start the stack —
+   Lavalink will log a Google device-login URL and code.
+2. Open that URL in any browser, enter the code, and sign in with a
+   **burner Google account, not your primary one** (per the plugin's own
+   warning — there's some risk to the linked account, so don't use one you
+   care about).
+3. Lavalink then logs a refresh token
+   (`docker compose logs lavalink | grep "refresh token"`). Paste it into
+   `.env` as `YOUTUBE_OAUTH_REFRESH_TOKEN=...` and
+   `docker compose restart lavalink` so it's reused instead of repeating
+   the login flow on every restart.
+
 Build and start everything in the background:
 
 ```bash

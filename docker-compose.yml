@@ -7,6 +7,7 @@ services:
       - _JAVA_OPTIONS=-Xmx1G
       - SERVER_PORT=2333
       - LAVALINK_SERVER_PASSWORD=${LAVALINK_PASSWORD}
+      - PLUGINS_YOUTUBE_OAUTH_REFRESHTOKEN=${YOUTUBE_OAUTH_REFRESH_TOKEN:-}
     volumes:
       - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro,Z
       - ./lavalink/plugins:/opt/Lavalink/plugins:Z
