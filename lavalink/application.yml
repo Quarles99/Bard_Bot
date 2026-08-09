@@ -35,6 +35,11 @@ plugins:
       - ANDROID_VR
       - WEB
       - WEBEMBEDDED
+    oauth:
+      enabled: true
+      # After completing the device-login flow once, paste the printed
+      # refresh token here so it doesn't need to be redone on restart:
+      # refreshToken: "paste refresh token here"
 
 metrics:
   prometheus:
@@ -44,3 +49,4 @@ logging:
   level:
     root: INFO
     lavalink: INFO
+    dev.lavalink.youtube.http.YoutubeOauth2Handler: INFO
