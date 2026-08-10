@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import re
 
+import aiohttp
 import discord
 import wavelink
 from discord import app_commands
@@ -9,6 +11,8 @@ from discord.ext import commands
 from history_store import TrackRecord
 
 log = logging.getLogger("musicbot")
+
+_YOUTUBE_VIDEO_ID_RE = re.compile(r"(?:v=|youtu\.be/)([\w-]{11})")
 
 
 def format_duration(ms: int) -> str:
@@ -26,6 +30,71 @@ class Music(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self._http: aiohttp.ClientSession
+
+    async def cog_load(self):
+        self._http = aiohttp.ClientSession()
+
+    async def cog_unload(self):
+        await self._http.close()
+
+    async def _oembed_title(self, url: str) -> str | None:
+        # YouTube's public oEmbed endpoint gives us a title/author without
+        # going through Lavalink at all, so it works even for videos that
+        # YouTube's unauthenticated clients refuse to load directly (see
+        # _search_with_fallback below). Look up by bare video URL rather than
+        # forwarding playlist/index params (e.g. a user's private "Liked
+        # videos" list id) that don't matter for the title lookup.
+        match = _YOUTUBE_VIDEO_ID_RE.search(url)
+        lookup_url = f"https://www.youtube.com/watch?v={match.group(1)}" if match else url
+        try:
+            async with self._http.get(
+                "https://www.youtube.com/oembed", params={"url": lookup_url, "format": "json"}
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json(content_type=None)
+        except Exception as exc:
+            log.warning("oEmbed lookup failed for %r: %s", url, exc)
+            return None
+
+        title = data.get("title")
+        if not title:
+            return None
+        author = data.get("author_name")
+        return f"{title} {author}" if author else title
+
+    async def _search_with_fallback(self, query: str) -> tuple[wavelink.Search | None, bool]:
+        """Returns (results, used_fallback). used_fallback is True when the
+        results came from a title search rather than the query as given, so
+        callers can treat the match as unconfirmed (e.g. skip recording it
+        to history)."""
+        try:
+            results = await wavelink.Playable.search(query)
+        except Exception as exc:
+            log.warning("Direct lookup failed for %r: %s", query, exc)
+            results = None
+
+        if results:
+            return results, False
+        if not query.startswith(("http://", "https://")):
+            return None, False
+
+        # Direct video-URL lookups only ever hit YouTube's unauthenticated
+        # clients (OAuth is only wired up for the TV client, which isn't used
+        # for the metadata/load step), so a login-gated video fails here even
+        # though a plain search for its title still works. Search by the
+        # regular YouTube source (not the default YouTube Music catalog
+        # search) since the video may not be music at all.
+        title = await self._oembed_title(query)
+        if title is None:
+            return None, False
+        try:
+            results = await wavelink.Playable.search(title, source=wavelink.TrackSource.YouTube)
+        except Exception as exc:
+            log.warning("Search fallback failed for %r: %s", title, exc)
+            return None, False
+        return (results or None), True
 
     async def _ensure_player(self, interaction: discord.Interaction) -> wavelink.Player | None:
         if interaction.user.voice is None or interaction.user.voice.channel is None:
@@ -76,7 +145,7 @@ class Music(commands.Cog):
         if player is None:
             return
 
-        results: wavelink.Search = await wavelink.Playable.search(query)
+        results, used_fallback = await self._search_with_fallback(query)
         if not results:
             await interaction.followup.send(f"No results found for `{query}`.")
             return
@@ -89,8 +158,14 @@ class Music(commands.Cog):
         else:
             track = results[0]
             await player.queue.put_wait(track)
-            await self.bot.history.record_play(interaction.guild.id, track)
-            await interaction.followup.send(f"Queued **{track.title}**.")
+            if used_fallback:
+                await interaction.followup.send(
+                    f"Couldn't load that link directly — queued **{track.title}** from search instead. "
+                    "Double-check it's the right one."
+                )
+            else:
+                await self.bot.history.record_play(interaction.guild.id, track)
+                await interaction.followup.send(f"Queued **{track.title}**.")
 
         if not player.playing:
             await player.play(player.queue.get())
