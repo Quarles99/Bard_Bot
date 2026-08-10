@@ -1,9 +1,14 @@
 import asyncio
+import logging
 
 import discord
 import wavelink
 from discord import app_commands
 from discord.ext import commands
+
+from history_store import TrackRecord
+
+log = logging.getLogger("musicbot")
 
 
 def format_duration(ms: int) -> str:
@@ -33,6 +38,34 @@ class Music(commands.Cog):
             player.autoplay = wavelink.AutoPlayMode.disabled
             player.text_channel = interaction.channel
         return player
+
+    async def _resolve_history_track(self, record: TrackRecord) -> wavelink.Playable | None:
+        # A direct video-URL lookup only ever hits YouTube's unauthenticated
+        # clients (OAuth is only wired up for the TV client, which can't load
+        # metadata), so previously-fine videos that YouTube now flags as
+        # "requires login" fail here even though a plain search still works.
+        try:
+            result = await wavelink.Playable.search(record.uri)
+        except Exception as exc:
+            log.warning("History shuffle: direct lookup failed for %r (%s): %s", record.title, record.uri, exc)
+            result = None
+        else:
+            if not result:
+                log.warning("History shuffle: direct lookup had no matches for %r (%s)", record.title, record.uri)
+                result = None
+
+        if not result:
+            query = f"{record.title} {record.author}"
+            try:
+                result = await wavelink.Playable.search(query)
+            except Exception as exc:
+                log.warning("History shuffle: search fallback failed for %r: %s", record.title, exc)
+                return None
+            if not result:
+                log.warning("History shuffle: search fallback had no matches for %r", record.title)
+                return None
+
+        return result.tracks[0] if isinstance(result, wavelink.Playlist) else result[0]
 
     @app_commands.command(name="play", description="Play a song or add it to the queue")
     @app_commands.describe(query="A search term, YouTube/SoundCloud URL, or playlist URL")
@@ -188,16 +221,12 @@ class Music(commands.Cog):
             await interaction.followup.send("No play history yet for this server.")
             return
 
-        results = await asyncio.gather(
-            *(wavelink.Playable.search(record.uri) for record in records),
-            return_exceptions=True,
-        )
+        tracks = await asyncio.gather(*(self._resolve_history_track(record) for record in records))
 
         queued = 0
-        for result in results:
-            if isinstance(result, BaseException) or not result:
+        for track in tracks:
+            if track is None:
                 continue
-            track = result.tracks[0] if isinstance(result, wavelink.Playlist) else result[0]
             await player.queue.put_wait(track)
             queued += 1
 
