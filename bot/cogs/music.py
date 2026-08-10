@@ -16,6 +16,21 @@ log = logging.getLogger("musicbot")
 
 _YOUTUBE_VIDEO_ID_RE = re.compile(r"(?:v=|youtu\.be/)([\w-]{11})")
 
+# Params for the custom "compressor" pluginFilter (lavalink/compressor-plugin)
+# that levels out perceived volume across differently-mastered tracks. See
+# CompressorFilterExtension.java for what each field does.
+COMPRESSOR_FILTER_PARAMS = {
+    "targetLevelDb": -16.0,
+    "levelerAttackMs": 1000.0,
+    "levelerReleaseMs": 4000.0,
+    "levelerMaxBoostDb": 12.0,
+    "levelerMaxCutDb": 24.0,
+    "noiseGateDb": -50.0,
+    "limiterThresholdDb": -1.0,
+    "limiterAttackMs": 5.0,
+    "limiterReleaseMs": 100.0,
+}
+
 
 def format_duration(ms: int) -> str:
     seconds = ms // 1000
@@ -108,6 +123,9 @@ class Music(commands.Cog):
             player = await interaction.user.voice.channel.connect(cls=wavelink.Player)
             player.autoplay = wavelink.AutoPlayMode.disabled
             player.text_channel = interaction.channel
+            filters = player.filters
+            filters.plugin_filters.set(compressor=COMPRESSOR_FILTER_PARAMS)
+            await player.set_filters(filters)
         return player
 
     async def _resolve_history_track(self, record: TrackRecord) -> wavelink.Playable | None:
