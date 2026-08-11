@@ -32,6 +32,16 @@ COMPRESSOR_FILTER_PARAMS = {
 }
 
 
+def _is_age_restricted_message(message: str) -> bool:
+    # The youtube-plugin's message for an unauthenticated age-gated load is
+    # exactly "This video requires age verification." (see Client.java's
+    # getPlayabilityStatus, LOGIN_REQUIRED branch); "inappropriate for some
+    # users" is YouTube's own wording surfacing verbatim via the
+    # CONTENT_CHECK_REQUIRED branch of the same method.
+    lowered = message.lower()
+    return "age verification" in lowered or "inappropriate for some users" in lowered
+
+
 def format_duration(ms: int) -> str:
     seconds = ms // 1000
     minutes, seconds = divmod(seconds, 60)
@@ -81,21 +91,32 @@ class Music(commands.Cog):
         author = data.get("author_name")
         return f"{title} {author}" if author else title
 
-    async def _search_with_fallback(self, query: str) -> tuple[wavelink.Search | None, bool]:
-        """Returns (results, used_fallback). used_fallback is True when the
-        results came from a title search rather than the query as given, so
-        callers can treat the match as unconfirmed (e.g. skip recording it
-        to history)."""
+    async def _search_with_fallback(
+        self, query: str
+    ) -> tuple[wavelink.Search | None, bool, str | None]:
+        """Returns (results, used_fallback, load_error). used_fallback is True
+        when the results came from a title search rather than the query as
+        given, so callers can treat the match as unconfirmed (e.g. skip
+        recording it to history). load_error is the message Lavalink gave for
+        the direct lookup, if it failed with one and no results were
+        ultimately found (e.g. an age-restriction notice) — the oEmbed-based
+        fallback below can't distinguish "age-restricted" from "removed",
+        since YouTube's oEmbed endpoint 404s for both."""
+        load_error: str | None = None
         try:
             results = await wavelink.Playable.search(query)
+        except wavelink.LavalinkLoadException as exc:
+            log.warning("Direct lookup failed for %r: %s", query, exc)
+            results = None
+            load_error = exc.error
         except Exception as exc:
             log.warning("Direct lookup failed for %r: %s", query, exc)
             results = None
 
         if results:
-            return results, False
+            return results, False, None
         if not query.startswith(("http://", "https://")):
-            return None, False
+            return None, False, load_error
 
         # Direct video-URL lookups only ever hit YouTube's unauthenticated
         # clients (OAuth is only wired up for the TV client, which isn't used
@@ -105,13 +126,13 @@ class Music(commands.Cog):
         # search) since the video may not be music at all.
         title = await self._oembed_title(query)
         if title is None:
-            return None, False
+            return None, False, load_error
         try:
             results = await wavelink.Playable.search(title, source=wavelink.TrackSource.YouTube)
         except Exception as exc:
             log.warning("Search fallback failed for %r: %s", title, exc)
-            return None, False
-        return (results or None), True
+            return None, False, load_error
+        return (results or None), True, (load_error if not results else None)
 
     async def _ensure_player(self, interaction: discord.Interaction) -> wavelink.Player | None:
         if interaction.user.voice is None or interaction.user.voice.channel is None:
@@ -165,9 +186,15 @@ class Music(commands.Cog):
         if player is None:
             return
 
-        results, used_fallback = await self._search_with_fallback(query)
+        results, used_fallback, load_error = await self._search_with_fallback(query)
         if not results:
-            await interaction.followup.send(f"No results found for `{query}`.")
+            if load_error and _is_age_restricted_message(load_error):
+                await interaction.followup.send(
+                    "Couldn't queue that — it's age-restricted and can't be played "
+                    "without a signed-in YouTube account."
+                )
+            else:
+                await interaction.followup.send(f"No results found for `{query}`.")
             return
 
         if isinstance(results, wavelink.Playlist):
@@ -378,6 +405,23 @@ class Music(commands.Cog):
         if not player.queue.is_empty and not player.playing:
             next_track = player.queue.get()
             await player.play(next_track)
+
+    @commands.Cog.listener()
+    async def on_wavelink_track_exception(self, payload: wavelink.TrackExceptionEventPayload):
+        player = payload.player
+        channel = getattr(player, "text_channel", None) if player else None
+        if channel is None:
+            return
+
+        # Search results aren't playability-checked, so age-restricted videos
+        # queued via search load fine and only fail here, once Lavalink
+        # actually tries to stream them.
+        message = payload.exception.get("message") or ""
+        if _is_age_restricted_message(message):
+            reason = "it's age-restricted and can't be played without a signed-in YouTube account."
+        else:
+            reason = message or "of an unknown error."
+        await channel.send(f"Couldn't play **{payload.track.title}** — {reason}")
 
     @commands.Cog.listener()
     async def on_wavelink_inactive_player(self, player: wavelink.Player):
