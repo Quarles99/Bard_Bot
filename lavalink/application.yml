@@ -11,7 +11,12 @@ lavalink:
       soundcloud: true
       twitch: true
       vimeo: true
-      http: true
+      # Left disabled: it lets /play fetch an arbitrary attacker-supplied
+      # host/URL (not just a path) from the Lavalink server, which is a
+      # server-side request forgery primitive against whatever the
+      # deployment's network exposes outbound. None of the supported
+      # platforms above need it - they have their own source handlers.
+      http: false
       local: false
     filters:
       volume: true
