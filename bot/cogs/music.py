@@ -20,7 +20,7 @@ _YOUTUBE_VIDEO_ID_RE = re.compile(r"(?:v=|youtu\.be/)([\w-]{11})")
 # that levels out perceived volume across differently-mastered tracks. See
 # CompressorFilterExtension.java for what each field does.
 COMPRESSOR_FILTER_PARAMS = {
-    "targetLevelDb": -16.0,
+    "targetLevelDb": -13.0,
     "levelerAttackMs": 1000.0,
     "levelerReleaseMs": 4000.0,
     "levelerMaxBoostDb": 12.0,
