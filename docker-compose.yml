@@ -35,3 +35,4 @@ services:
 
 networks:
   musicbot:
+    enable_ipv6: true
