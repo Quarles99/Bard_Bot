@@ -26,7 +26,17 @@ intents.voice_states = True
 
 class MusicBot(commands.Bot):
     def __init__(self):
-        super().__init__(command_prefix="!", intents=intents)
+        # Track titles/authors come from external sources (YouTube,
+        # SoundCloud, etc.) and get echoed verbatim into channel messages
+        # (queue confirmations, /nowplaying, /history list). Without this,
+        # a title containing "@everyone"/"@here"/a role mention would ping
+        # the whole server per Discord's legacy default of parsing mentions
+        # in message content.
+        super().__init__(
+            command_prefix="!",
+            intents=intents,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
     async def setup_hook(self) -> None:
         node = wavelink.Node(
