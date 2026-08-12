@@ -420,8 +420,12 @@ class Music(commands.Cog):
         if _is_age_restricted_message(message):
             reason = "it's age-restricted and can't be played without a signed-in YouTube account."
         else:
-            reason = message or "of an unknown error."
-        await channel.send(f"Couldn't play **{payload.track.title}** — {reason}")
+            # message can be youtube-plugin's full AllClientsFailedException dump (one
+            # entry per client, each with a stack trace) — well over Discord's 2000-char
+            # limit, which used to make the send below raise and get silently dropped.
+            reason = message.split("\n", 1)[0] or "of an unknown error."
+        content = f"Couldn't play **{payload.track.title}** — {reason}"
+        await channel.send(content[:2000])
 
     @commands.Cog.listener()
     async def on_wavelink_inactive_player(self, player: wavelink.Player):

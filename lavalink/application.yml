@@ -41,6 +41,9 @@ plugins:
       - WEB
       - WEBEMBEDDED
       - TV # only client that actually uses the OAuth token for playback
+      # TV's own OAuth-gated playback currently fails login-gated videos with
+      # "The page needs to be reloaded" — open upstream bug, not fixable via
+      # config: https://github.com/lavalink-devs/youtube-source/issues/226
     oauth:
       enabled: true
       # refreshToken is supplied via the YOUTUBE_OAUTH_REFRESH_TOKEN env var
