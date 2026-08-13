@@ -48,8 +48,8 @@ def _is_age_restricted_message(message: str) -> bool:
 # support and fails at the streaming step anyway (upstream issue #226, open
 # since this was investigated). See POSTMORTEM.md for the full writeup.
 _AGE_GATE_NOTE = (
-    "That's a known limitation we couldn't fix. Development on this bot has ended — "
-    "see https://github.com/Quarles99/Bard_Bot for details."
+    "That's a known limitation we couldn't fix, even with a personal sign-in. Development on "
+    "this bot has ended — see https://github.com/Quarles99/Bard_Bot for details."
 )
 
 
