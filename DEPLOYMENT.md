@@ -41,15 +41,19 @@ adduser deploy
 usermod -aG docker,sudo deploy
 ```
 
-Then reconnect as `ssh deploy@<server-ip>` for the rest of these steps.
+Then reconnect as `ssh deploy@<server-ip>` for the rest of these steps. The
+repo will live at `/home/deploy/Bard_Bot`, and `deploy`'s `docker` group
+membership means `docker compose` commands there don't need `sudo` — it's
+only needed for things outside `deploy`'s own home directory (like the
+firewall setup right below).
 
 Set up a basic firewall — you only need SSH open; Lavalink's port (2333) is
 never exposed publicly since it's only reachable from the `bot` container on
 the internal Docker network:
 
 ```bash
-ufw allow OpenSSH
-ufw enable
+sudo ufw allow OpenSSH
+sudo ufw enable
 ```
 
 ## 3. Deploy the bot
@@ -136,7 +140,7 @@ restart: `docker compose restart bot`.
 ## 5. Updating the bot later
 
 ```bash
-cd Bard_Bot
+cd /home/deploy/Bard_Bot
 git pull
 docker compose up -d --build
 ```
