@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 data/
+
+# Contains the real production server IP/SSH details - keep local-only.
+.claude/skills/deploy/
