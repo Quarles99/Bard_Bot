@@ -1,5 +1,9 @@
 # TODO
 
+**Not being pursued** — development on this project ended (see
+`POSTMORTEM.md`). Kept below as reference for anyone forking this to add the
+feature themselves.
+
 ## Add Spotify support
 
 Currently `/play` supports YouTube and SoundCloud (SoundCloud is native to

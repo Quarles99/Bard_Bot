@@ -44,6 +44,8 @@ plugins:
       # TV's own OAuth-gated playback currently fails login-gated videos with
       # "The page needs to be reloaded" — open upstream bug, not fixable via
       # config: https://github.com/lavalink-devs/youtube-source/issues/226
+      # (also: no client both loads metadata and supports OAuth, so even a
+      # fix here wouldn't be enough on its own — see ../../POSTMORTEM.md)
     oauth:
       enabled: true
       # refreshToken is supplied via the YOUTUBE_OAUTH_REFRESH_TOKEN env var

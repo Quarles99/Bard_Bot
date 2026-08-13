@@ -42,6 +42,17 @@ def _is_age_restricted_message(message: str) -> bool:
     return "age verification" in lowered or "inappropriate for some users" in lowered
 
 
+# Age/login-gated YouTube videos are a permanent limitation, not a bug: per
+# youtube-source's own client table, no client that can load/search metadata
+# also supports OAuth, and the one OAuth-capable client (TV) has no metadata
+# support and fails at the streaming step anyway (upstream issue #226, open
+# since this was investigated). See POSTMORTEM.md for the full writeup.
+_AGE_GATE_NOTE = (
+    "That's a known limitation we couldn't fix. Development on this bot has ended — "
+    "see https://github.com/Quarles99/Bard_Bot for details."
+)
+
+
 def format_duration(ms: int) -> str:
     seconds = ms // 1000
     minutes, seconds = divmod(seconds, 60)
@@ -119,9 +130,10 @@ class Music(commands.Cog):
             return None, False, load_error
 
         # Direct video-URL lookups only ever hit YouTube's unauthenticated
-        # clients (OAuth is only wired up for the TV client, which isn't used
-        # for the metadata/load step), so a login-gated video fails here even
-        # though a plain search for its title still works. Search by the
+        # clients: TV is the only OAuth-capable client, and it has no
+        # metadata/load support at all (youtube-source's client table), so it
+        # can't be used here — a login-gated video fails even though a plain
+        # search for its title still works. Search by the
         # regular YouTube source (not the default YouTube Music catalog
         # search) since the video may not be music at all.
         title = await self._oembed_title(query)
@@ -151,9 +163,10 @@ class Music(commands.Cog):
 
     async def _resolve_history_track(self, record: TrackRecord) -> wavelink.Playable | None:
         # A direct video-URL lookup only ever hits YouTube's unauthenticated
-        # clients (OAuth is only wired up for the TV client, which can't load
-        # metadata), so previously-fine videos that YouTube now flags as
-        # "requires login" fail here even though a plain search still works.
+        # clients: TV is the only OAuth-capable client, and it can't load
+        # metadata at all, so it can't be used here — previously-fine videos
+        # that YouTube now flags as "requires login" fail even though a plain
+        # search still works.
         try:
             result = await wavelink.Playable.search(record.uri)
         except Exception as exc:
@@ -189,10 +202,7 @@ class Music(commands.Cog):
         results, used_fallback, load_error = await self._search_with_fallback(query)
         if not results:
             if load_error and _is_age_restricted_message(load_error):
-                await interaction.followup.send(
-                    "Couldn't queue that — it's age-restricted and can't be played "
-                    "without a signed-in YouTube account."
-                )
+                await interaction.followup.send(f"Couldn't queue that — it's age-restricted. {_AGE_GATE_NOTE}")
             else:
                 await interaction.followup.send(f"No results found for `{query}`.")
             return
@@ -418,13 +428,17 @@ class Music(commands.Cog):
         # actually tries to stream them.
         message = payload.exception.get("message") or ""
         if _is_age_restricted_message(message):
-            reason = "it's age-restricted and can't be played without a signed-in YouTube account."
+            reason = f"it's age-restricted. {_AGE_GATE_NOTE}"
         else:
             # message can be youtube-plugin's full AllClientsFailedException dump (one
             # entry per client, each with a stack trace) — well over Discord's 2000-char
             # limit, which used to make the send below raise and get silently dropped.
             reason = message.split("\n", 1)[0] or "of an unknown error."
-        content = f"Couldn't play **{payload.track.title}** — {reason}"
+        # Track titles are attacker-controlled length; truncate so a long one
+        # can't push the (fixed-length, more important) reason past Discord's
+        # 2000-char limit and get it silently chopped off.
+        title = payload.track.title[:100]
+        content = f"Couldn't play **{title}** — {reason}"
         await channel.send(content[:2000])
 
     @commands.Cog.listener()
