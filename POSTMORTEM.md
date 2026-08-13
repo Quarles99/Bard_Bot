@@ -85,6 +85,20 @@ bug list item — hence "wall," not "blocker."
   login-required (`LOGIN_REQUIRED`) case at all.
 - **Newer plugin version** — 1.18.2 was the latest release as of 2026-08-12;
   there's nothing to upgrade to.
+- **Per-user sign-in instead of a shared bot account** — `youtube-source`
+  does support passing a per-track OAuth access token via a track's
+  `userData.oauth-token` field (see the README and
+  `YoutubeAudioTrack.java`), so a bot could in principle have each Discord
+  user sign into their own YouTube account and use their token instead of
+  one shared account's. It doesn't help: per `YoutubeAudioTrack.java`, that
+  token is only ever attached when the client handling the request is one
+  with `supportsOAuth()` true — still only `TV`, no matter whose token it
+  is. Same client, same code path, same #226 failure (which fails parsing
+  YouTube's response, not validating the account). It would also mean
+  running a Google OAuth flow per Discord user and storing their tokens,
+  using a flow the plugin's own docs warn can get the linked account
+  banned — a cost worth paying for one burner account, not for real users'
+  accounts, especially for a payoff that still wouldn't work.
 - **`WEBEMBEDDED`'s "Limited" age-restriction support** — likely explains why
   the softer content-check-required case (YouTube's own "inappropriate for
   some users" wording) already plays fine via search, while the harder
