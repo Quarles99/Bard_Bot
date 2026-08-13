@@ -48,8 +48,8 @@ def _is_age_restricted_message(message: str) -> bool:
 # support and fails at the streaming step anyway (upstream issue #226, open
 # since this was investigated). See POSTMORTEM.md for the full writeup.
 _AGE_GATE_NOTE = (
-    "That's a known limitation we couldn't fix, even with a personal sign-in. Development on "
-    "this bot has ended — see https://github.com/Quarles99/Bard_Bot for details."
+    "You have requested an age-gated video, which this bot does not support. "
+    "See https://github.com/Quarles99/Bard_Bot for more information."
 )
 
 
@@ -202,7 +202,7 @@ class Music(commands.Cog):
         results, used_fallback, load_error = await self._search_with_fallback(query)
         if not results:
             if load_error and _is_age_restricted_message(load_error):
-                await interaction.followup.send(f"Couldn't queue that — it's age-restricted. {_AGE_GATE_NOTE}")
+                await interaction.followup.send(_AGE_GATE_NOTE)
             else:
                 await interaction.followup.send(f"No results found for `{query}`.")
             return
@@ -428,12 +428,13 @@ class Music(commands.Cog):
         # actually tries to stream them.
         message = payload.exception.get("message") or ""
         if _is_age_restricted_message(message):
-            reason = f"it's age-restricted. {_AGE_GATE_NOTE}"
-        else:
-            # message can be youtube-plugin's full AllClientsFailedException dump (one
-            # entry per client, each with a stack trace) — well over Discord's 2000-char
-            # limit, which used to make the send below raise and get silently dropped.
-            reason = message.split("\n", 1)[0] or "of an unknown error."
+            await channel.send(_AGE_GATE_NOTE)
+            return
+
+        # message can be youtube-plugin's full AllClientsFailedException dump (one entry
+        # per client, each with a stack trace) — well over Discord's 2000-char limit,
+        # which used to make the send below raise and get silently dropped.
+        reason = message.split("\n", 1)[0] or "of an unknown error."
         # Track titles are attacker-controlled length; truncate so a long one
         # can't push the (fixed-length, more important) reason past Discord's
         # 2000-char limit and get it silently chopped off.
